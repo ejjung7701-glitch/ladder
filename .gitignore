@@ -1,0 +1,2 @@
+# 'node_modules' 라는 이름의 디렉토리 전체 제외하기
+node_modules/
