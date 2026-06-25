@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사다리타기 (클라이언트-서버)</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --primary:#5b6cf0; --primary-dark:#4453d8;
+    --text:#222; --muted:#888; --border:#e3e6f0; --line:#c9cdf5; --goal:#ffd76b;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; font-family:"Apple SD Gothic Neo","Malgun Gothic",sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+  h1{ text-align:center; font-size:1.6rem; margin-bottom:4px;}
+  .sub{ text-align:center; color:var(--muted); margin-bottom:8px; font-size:.9rem;}
+  .conn{ text-align:center; font-size:.8rem; margin-bottom:18px; }
+  .conn.ok{ color:#2b8a3e; } .conn.bad{ color:#c92a2a; }
+  .wrap{ max-width:1100px; margin:0 auto; }
+  .panels{ display:flex; flex-wrap:wrap; gap:16px; justify-content:center; margin-bottom:20px;}
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; flex:1 1 320px; max-width:420px; box-shadow:0 2px 8px rgba(0,0,0,.04); }
+  .card h2{ margin:0 0 10px; font-size:1.05rem; }
+  .input-row{ display:flex; gap:6px; margin-bottom:10px;}
+  .input-row input{ flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:.95rem; }
+  .input-row button, .done-btn, .start-btn, .reset-btn{
+    padding:10px 16px; border:none; border-radius:8px; cursor:pointer; font-size:.92rem; font-weight:600;
+  }
+  .input-row button{ background:var(--primary); color:#fff; }
+  .done-btn{ background:#444; color:#fff; width:100%; margin-top:4px;}
+  .done-btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .tag-list{ display:flex; flex-wrap:wrap; gap:6px; min-height:34px; margin-bottom:6px;}
+  .tag{ background:#eef0fb; border:1px solid var(--line); color:#3a3f8c; padding:5px 10px; border-radius:16px; font-size:.85rem; display:flex; align-items:center; gap:6px; }
+  .tag button{ background:none; border:none; cursor:pointer; color:#888; font-size:.8rem; line-height:1;}
+  .locked-note{ font-size:.78rem; color:var(--muted); margin-top:4px;}
+  .controls{ text-align:center; margin:18px 0; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+  .start-btn{ background:linear-gradient(135deg,#5b6cf0,#8a5bf0); color:#fff; font-size:1.05rem; padding:13px 30px;}
+  .start-btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .reset-btn{ background:#eee; color:#444; }
+  .stage{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; overflow-x:auto; text-align:center; }
+  .names-row, .goals-row{ position:relative; height:40px; display:inline-block; }
+  .names-row div, .goals-row div{ position:absolute; top:0; text-align:center; font-weight:700; font-size:.85rem; padding:6px 2px; box-sizing:border-box; }
+  .goals-row div{ border-radius:8px; margin:0 3px; padding:8px 2px; background:#f0f1f6; color:#444; border:1px dashed #ccc; transition:background .3s, color .3s, border .3s; }
+  .goals-row div.revealed{ color:#fff; border:1px solid rgba(0,0,0,.15); }
+  .names-row div span{ display:inline-block; padding:4px 8px; border-radius:8px; background:#eef0fb; transition:background .15s; }
+  .names-row div.clickable span{ cursor:pointer; }
+  .names-row div.clickable span:hover{ background:var(--line); }
+  .names-row div.active span{ background:var(--active-color, var(--primary)); color:#fff; }
+  .names-row div.played span{ background:#ddd; color:#888; }
+  svg{ display:block; margin:6px auto; }
+  .status{ text-align:center; margin-top:14px; font-size:.95rem; color:#444; min-height:20px;}
+  .result-table{ width:100%; margin-top:16px; border-collapse:collapse; font-size:.9rem;}
+  .result-table th, .result-table td{ border:1px solid var(--border); padding:8px; text-align:center;}
+  .result-table th{ background:#f0f1f6; }
+  .hidden{ display:none; }
+  .empty-hint{ color:var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🪜 사다리타기 <small style="font-size:.6em;color:#888;">(클라이언트-서버)</small></h1>
+  <div class="sub">여러 명이 같은 화면을 동시에 보며 진행할 수 있습니다</div>
+  <div class="conn" id="connStatus">서버 연결 중...</div>
+
+  <div class="panels">
+    <div class="card">
+      <h2>참여자</h2>
+      <div class="input-row">
+        <input id="nameInput" type="text" placeholder="이름 입력 후 Enter">
+        <button id="addNameBtn">추가</button>
+      </div>
+      <div class="tag-list" id="nameTags"><span class="empty-hint">참여자를 추가해주세요</span></div>
+      <button class="done-btn" id="nameDoneBtn">완료</button>
+      <div class="locked-note" id="nameLockNote"></div>
+    </div>
+
+    <div class="card">
+      <h2>목표 (점심값)</h2>
+      <div class="input-row">
+        <input id="goalInput" type="text" placeholder="예: 5000원 / 입력 후 Enter">
+        <button id="addGoalBtn">추가</button>
+      </div>
+      <div class="tag-list" id="goalTags"><span class="empty-hint">목표를 추가해주세요 (중복 입력 가능)</span></div>
+      <button class="done-btn" id="goalDoneBtn">완료</button>
+      <div class="locked-note" id="goalLockNote"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="start-btn" id="startBtn" disabled>사다리 시작</button>
+    <button class="reset-btn" id="resetBtn">처음부터 다시 (전체 초기화)</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="empty-hint" id="stageHint" style="text-align:center;">참여자와 목표를 모두 '완료'하면 사다리가 생성됩니다.</div>
+    <div id="ladderArea" class="hidden">
+      <div class="names-row" id="namesRow"></div>
+      <svg id="ladderSvg"></svg>
+      <div class="goals-row" id="goalsRow"></div>
+    </div>
+  </div>
+
+  <div class="status" id="statusMsg"></div>
+  <table class="result-table hidden" id="resultTable">
+    <thead><tr><th>참여자</th><th>결과</th></tr></thead>
+    <tbody id="resultBody"></tbody>
+  </table>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function(){
+  const socket = io();
+  const connStatus = document.getElementById('connStatus');
+  socket.on('connect', () => { connStatus.textContent = '서버에 연결됨'; connStatus.className = 'conn ok'; });
+  socket.on('disconnect', () => { connStatus.textContent = '서버 연결 끊김'; connStatus.className = 'conn bad'; });
+  socket.on('errorMsg', (msg) => alert(msg));
+
+  const nameInput = document.getElementById('nameInput');
+  const goalInput = document.getElementById('goalInput');
+  const nameTags = document.getElementById('nameTags');
+  const goalTags = document.getElementById('goalTags');
+  const nameDoneBtn = document.getElementById('nameDoneBtn');
+  const goalDoneBtn = document.getElementById('goalDoneBtn');
+  const nameLockNote = document.getElementById('nameLockNote');
+  const goalLockNote = document.getElementById('goalLockNote');
+  const startBtn = document.getElementById('startBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const stageHint = document.getElementById('stageHint');
+  const ladderArea = document.getElementById('ladderArea');
+  const namesRow = document.getElementById('namesRow');
+  const goalsRow = document.getElementById('goalsRow');
+  const svg = document.getElementById('ladderSvg');
+  const statusMsg = document.getElementById('statusMsg');
+  const resultTable = document.getElementById('resultTable');
+  const resultBody = document.getElementById('resultBody');
+
+  const PATH_COLORS = ['#ff6b6b','#4dabf7','#51cf66','#ffa94d','#cc5de8','#20c997','#f06595','#845ef7','#fcc419','#3bc9db'];
+  const colorFor = (i) => PATH_COLORS[i % PATH_COLORS.length];
+
+  const COL_W = 90, ROW_H = 36, PAD_X = 20;
+  function colX(c){ return PAD_X + c * COL_W; }
+  function rowY(r){ return 15 + r * ROW_H; }
+  function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  let latestState = null;
+  let animatingFor = -1; // 애니메이션 중복 실행 방지
+
+  document.getElementById('addNameBtn').onclick = addName;
+  document.getElementById('addGoalBtn').onclick = addGoal;
+  nameInput.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addName(); }});
+  goalInput.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addGoal(); }});
+  nameDoneBtn.onclick = () => socket.emit('lockNames');
+  goalDoneBtn.onclick = () => socket.emit('lockGoals');
+  startBtn.onclick = () => socket.emit('startLadder');
+  resetBtn.onclick = () => { if(confirm('모든 참여자에게 보이는 상태가 초기화됩니다. 계속할까요?')) socket.emit('reset'); };
+
+  function addName(){
+    const v = nameInput.value.trim();
+    if(!v) return;
+    socket.emit('addName', v);
+    nameInput.value = '';
+  }
+  function addGoal(){
+    const v = goalInput.value.trim();
+    if(!v) return;
+    socket.emit('addGoal', v);
+    goalInput.value = '';
+  }
+
+  function renderTags(container, arr, locked, removeEvent){
+    container.innerHTML = '';
+    if(arr.length === 0){
+      const hint = document.createElement('span');
+      hint.className = 'empty-hint';
+      hint.textContent = locked ? '' : '항목을 추가해주세요';
+      container.appendChild(hint);
+      return;
+    }
+    arr.forEach((val, idx) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      const label = document.createElement('span');
+      label.textContent = val;
+      tag.appendChild(label);
+      if(!locked){
+        const btn = document.createElement('button');
+        btn.textContent = '✕';
+        btn.onclick = () => socket.emit(removeEvent, idx);
+        tag.appendChild(btn);
+      }
+      container.appendChild(tag);
+    });
+  }
+
+  function drawLadderBase(ld){
+    const width = PAD_X * 2 + COL_W * (ld.n - 1) + 40;
+    const height = ROW_H * ld.rows + 30;
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.innerHTML = '';
+    for(let c = 0; c < ld.n; c++){
+      const x = colX(c);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', x); line.setAttribute('y1', rowY(0));
+      line.setAttribute('x2', x); line.setAttribute('y2', rowY(ld.rows));
+      line.setAttribute('stroke', '#c9cdf5'); line.setAttribute('stroke-width', 4);
+      line.setAttribute('id', `vline-${c}`);
+      svg.appendChild(line);
+    }
+    for(let r = 0; r < ld.rows; r++){
+      for(let c = 0; c < ld.n - 1; c++){
+        if(ld.rungs[r][c]){
+          const y = rowY(r) + ROW_H/2;
+          const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+          line.setAttribute('x1', colX(c)); line.setAttribute('y1', y);
+          line.setAttribute('x2', colX(c+1)); line.setAttribute('y2', y);
+          line.setAttribute('stroke', '#c9cdf5'); line.setAttribute('stroke-width', 4);
+          line.setAttribute('id', `rung-${r}-${c}`);
+          svg.appendChild(line);
+        }
+      }
+    }
+  }
+
+  function renderNamesAndGoals(ld, st){
+    namesRow.innerHTML = '';
+    goalsRow.innerHTML = '';
+    const totalWidth = PAD_X * 2 + COL_W * (ld.n - 1) + 40;
+    namesRow.style.width = totalWidth + 'px';
+    goalsRow.style.width = totalWidth + 'px';
+
+    // finalCol -> 도착한 참여자의 시작 인덱스 (색상 매칭용)
+    const goalOwner = {};
+    for(const r of st.results) goalOwner[r.finalCol] = r.start;
+
+    for(let c = 0; c < ld.n; c++){
+      const left = colX(c) - COL_W / 2;
+      const nd = document.createElement('div');
+      nd.id = `name-${c}`;
+      nd.style.width = COL_W + 'px';
+      nd.style.left = left + 'px';
+      nd.innerHTML = `<span>${escapeHtml(st.names[c])}</span>`;
+      const isPlayed = st.played.includes(c);
+      const isNext = c === 0 ? !st.played.includes(0) : st.played.includes(c - 1) && !st.played.includes(c);
+      if(isPlayed){
+        nd.classList.add('played');
+        const span = nd.querySelector('span');
+        span.style.background = colorFor(c);
+        span.style.color = '#fff';
+      } else if(isNext && !st.gameOver){
+        nd.classList.add('clickable');
+        nd.onclick = () => socket.emit('play', c);
+      }
+      namesRow.appendChild(nd);
+
+      const gd = document.createElement('div');
+      gd.id = `goal-${c}`;
+      gd.style.width = COL_W + 'px';
+      gd.style.left = left + 'px';
+      gd.textContent = ld.slotGoals[c];
+      if(c in goalOwner){
+        gd.classList.add('revealed');
+        gd.style.background = colorFor(goalOwner[c]);
+      }
+      goalsRow.appendChild(gd);
+    }
+  }
+
+  function renderResults(st){
+    resultBody.innerHTML = '';
+    if(st.results.length === 0){ resultTable.classList.add('hidden'); return; }
+    resultTable.classList.remove('hidden');
+    for(const r of st.results){
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.goal)}</td>`;
+      resultBody.appendChild(row);
+    }
+  }
+
+  function fullRender(st){
+    latestState = st;
+    renderTags(nameTags, st.names, st.namesLocked, 'removeName');
+    renderTags(goalTags, st.goals, st.goalsLocked, 'removeGoal');
+
+    nameInput.disabled = st.namesLocked; document.getElementById('addNameBtn').disabled = st.namesLocked;
+    nameDoneBtn.disabled = st.namesLocked;
+    nameLockNote.textContent = st.namesLocked ? `참여자 ${st.names.length}명 확정됨` : '';
+
+    goalInput.disabled = st.goalsLocked; document.getElementById('addGoalBtn').disabled = st.goalsLocked;
+    goalDoneBtn.disabled = st.goalsLocked;
+    goalLockNote.textContent = st.goalsLocked ? `목표 ${st.goals.length}개 확정됨` : '';
+
+    startBtn.disabled = !(st.namesLocked && st.goalsLocked) || !!st.ladder;
+
+    if(st.ladder){
+      stageHint.classList.add('hidden');
+      ladderArea.classList.remove('hidden');
+      drawLadderBase(st.ladder);
+      renderNamesAndGoals(st.ladder, st);
+    } else {
+      stageHint.classList.remove('hidden');
+      ladderArea.classList.add('hidden');
+    }
+
+    statusMsg.textContent = st.statusMsg || '';
+    renderResults(st);
+  }
+
+  socket.on('state', fullRender);
+
+  // ---------- 실시간 애니메이션 ----------
+  function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+  async function animatePath(ld, start, color){
+    const path = ld.pathCols[start];
+    const nameEl = document.getElementById(`name-${start}`);
+    if(nameEl){ nameEl.classList.add('active'); nameEl.style.setProperty('--active-color', color); }
+    for(let r = 0; r < ld.rows; r++){
+      const c1 = path[r], c2 = path[r+1];
+      const seg = document.createElementNS('http://www.w3.org/2000/svg','line');
+      seg.setAttribute('x1', colX(c1)); seg.setAttribute('y1', rowY(r));
+      seg.setAttribute('x2', colX(c1)); seg.setAttribute('y2', rowY(r) + ROW_H/2);
+      seg.setAttribute('stroke', color); seg.setAttribute('stroke-width', 5);
+      svg.appendChild(seg);
+      await sleep(90);
+      if(c2 !== c1){
+        const minC = Math.min(c1,c2);
+        const rungEl = document.getElementById(`rung-${r}-${minC}`);
+        if(rungEl){ rungEl.setAttribute('stroke', color); rungEl.setAttribute('stroke-width', 5); }
+        await sleep(90);
+      }
+      const seg2 = document.createElementNS('http://www.w3.org/2000/svg','line');
+      seg2.setAttribute('x1', colX(c2)); seg2.setAttribute('y1', rowY(r) + ROW_H/2);
+      seg2.setAttribute('x2', colX(c2)); seg2.setAttribute('y2', rowY(r+1));
+      seg2.setAttribute('stroke', color); seg2.setAttribute('stroke-width', 5);
+      svg.appendChild(seg2);
+      await sleep(90);
+    }
+    if(nameEl) nameEl.classList.remove('active');
+  }
+
+  socket.on('playResult', async (res) => {
+    if(!latestState || !latestState.ladder) return;
+    if(animatingFor === res.start) return;
+    animatingFor = res.start;
+    statusMsg.textContent = `${res.name} 진행 중...`;
+
+    await animatePath(latestState.ladder, res.start, colorFor(res.start));
+
+    const nameEl = document.getElementById(`name-${res.start}`);
+    if(nameEl){
+      nameEl.classList.remove('clickable');
+      nameEl.classList.remove('active');
+      nameEl.classList.add('played');
+      nameEl.onclick = null;
+      const span = nameEl.querySelector('span');
+      if(span){ span.style.background = colorFor(res.start); span.style.color = '#fff'; }
+    }
+    const goalEl = document.getElementById(`goal-${res.finalCol}`);
+    if(goalEl){ goalEl.classList.add('revealed'); goalEl.style.background = colorFor(res.start); }
+
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${escapeHtml(res.name)}</td><td>${escapeHtml(res.goalText)}</td>`;
+    resultBody.appendChild(row);
+    resultTable.classList.remove('hidden');
+
+    statusMsg.textContent = res.statusMsg;
+    animatingFor = -1;
+
+    if(!res.finished){
+      // 다음 참여자 진행을 자동 요청 (서버가 중복 요청은 무시함)
+      await sleep(300);
+      socket.emit('play', res.start + 1);
+      const nextEl = document.getElementById(`name-${res.start + 1}`);
+      if(nextEl) nextEl.classList.add('clickable');
+    }
+  });
+})();
+</script>
+</body>
+</html>
