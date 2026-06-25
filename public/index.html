@@ -36,6 +36,7 @@
   .start-btn:disabled{ opacity:.4; cursor:not-allowed; }
   .reset-btn{ background:#eee; color:#444; }
   .stage{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; overflow-x:auto; text-align:center; }
+  #ladderScale{ display:inline-block; }
   .names-row, .goals-row{ position:relative; height:40px; display:inline-block; }
   .names-row div, .goals-row div{ position:absolute; top:0; text-align:center; font-weight:700; font-size:.85rem; padding:6px 2px; box-sizing:border-box; }
   .goals-row div{ border-radius:8px; margin:0 3px; padding:8px 2px; background:#f0f1f6; color:#444; border:1px dashed #ccc; transition:background .3s, color .3s, border .3s; }
@@ -92,9 +93,11 @@
   <div class="stage" id="stage">
     <div class="empty-hint" id="stageHint" style="text-align:center;">참여자와 목표를 모두 '완료'하면 사다리가 생성됩니다.</div>
     <div id="ladderArea" class="hidden">
-      <div class="names-row" id="namesRow"></div>
-      <svg id="ladderSvg"></svg>
-      <div class="goals-row" id="goalsRow"></div>
+      <div id="ladderScale">
+        <div class="names-row" id="namesRow"></div>
+        <svg id="ladderSvg"></svg>
+        <div class="goals-row" id="goalsRow"></div>
+      </div>
     </div>
   </div>
 
@@ -136,7 +139,18 @@
   const PATH_COLORS = ['#ff6b6b','#4dabf7','#51cf66','#ffa94d','#cc5de8','#20c997','#f06595','#845ef7','#fcc419','#3bc9db'];
   const colorFor = (i) => PATH_COLORS[i % PATH_COLORS.length];
 
-  const COL_W = 90, ROW_H = 36, PAD_X = 20;
+  const ROW_H = 36, PAD_X = 20;
+  const MIN_COL_W = 50, MAX_COL_W = 140, DEFAULT_COL_W = 90;
+  let COL_W = DEFAULT_COL_W;
+
+  // 사다리 전체 가로 너비가 화면 가로의 80%가 되도록 칸 너비만 동적으로 계산 (세로 크기는 그대로 유지)
+  function computeColW(n){
+    if(n <= 1) return DEFAULT_COL_W;
+    const targetWidth = window.innerWidth * 0.8;
+    const w = (targetWidth - PAD_X * 2 - 40) / (n - 1);
+    return Math.min(MAX_COL_W, Math.max(MIN_COL_W, w));
+  }
+
   function colX(c){ return PAD_X + c * COL_W; }
   function rowY(r){ return 15 + r * ROW_H; }
   function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -266,6 +280,17 @@
     }
   }
 
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    if(!latestState || !latestState.ladder) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      COL_W = computeColW(latestState.ladder.n);
+      drawLadderBase(latestState.ladder);
+      renderNamesAndGoals(latestState.ladder, latestState);
+    }, 100);
+  });
+
   function renderResults(st){
     resultBody.innerHTML = '';
     if(st.results.length === 0){ resultTable.classList.add('hidden'); return; }
@@ -295,6 +320,7 @@
     if(st.ladder){
       stageHint.classList.add('hidden');
       ladderArea.classList.remove('hidden');
+      COL_W = computeColW(st.ladder.n);
       drawLadderBase(st.ladder);
       renderNamesAndGoals(st.ladder, st);
     } else {
